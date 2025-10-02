@@ -28,7 +28,7 @@ class SimulationHandler:
         self.simulation_vehicles = []
         
         self.vehicle_manager = SimulationVehicleManager(
-            self.canvas, sim_area_x, sim_area_y, sim_area_width, sim_area_height
+            sim_area_x, sim_area_y, sim_area_width, sim_area_height
         )
         
         self.button_y = 35
@@ -124,6 +124,8 @@ class SimulationHandler:
         
         self.initialize_traffic_lights()
         
+        self.setup_static_layering()
+        
         self.last_update_time = time.time()
         self.start_simulation_loop()
     
@@ -154,6 +156,10 @@ class SimulationHandler:
                 hover_bg="#FFF176",
                 pressed_bg="#FDD835"
             )
+        
+        if self.simulator_screen:
+            current_remaining = max(0, self.get_traffic_light_duration() - self.traffic_light_timer)
+            self.simulator_screen.update_timer(int(current_remaining))
     
     def resume_simulation(self):
         print("DEBUG: Reanudando simulacion")
@@ -167,6 +173,20 @@ class SimulationHandler:
                 hover_bg="#FFB74D",
                 pressed_bg="#F57C00"
             )
+        
+        if self.simulator_screen:
+            if self.is_transitioning:
+                remaining_transition = max(0, self.transition_duration - self.transition_timer)
+                transition_seconds = int(remaining_transition) + 1
+                if transition_seconds == 3:
+                    self.simulator_screen.update_timer_text("...")
+                elif transition_seconds == 2:
+                    self.simulator_screen.update_timer_text("..")
+                elif transition_seconds == 1:
+                    self.simulator_screen.update_timer_text(".")
+            else:
+                current_remaining = max(0, self.get_traffic_light_duration() - self.traffic_light_timer)
+                self.simulator_screen.update_timer(int(current_remaining))
     
     def clear_simulation(self):
         print("DEBUG: Limpiando simulacion")
@@ -256,23 +276,25 @@ class SimulationHandler:
         if self.is_transitioning:
             self.transition_timer += delta_time
             
-            transition_second = int(self.transition_timer) + 1
-            if transition_second == 1:
+            remaining_transition = max(0, self.transition_duration - self.transition_timer)
+            transition_seconds = int(remaining_transition) + 1
+            
+            if transition_seconds == 3:
+                self.simulator_screen.update_timer_text("...")
+            elif transition_seconds == 2:
+                self.simulator_screen.update_timer_text("..")
+            elif transition_seconds == 1:
                 self.simulator_screen.update_timer_text(".")
-            elif transition_second == 2:
-                self.simulator_screen.update_timer_text(". .")
-            elif transition_second == 3:
-                self.simulator_screen.update_timer_text(". . .")
             
             if self.transition_timer >= self.transition_duration:
                 self.complete_transition()
         else:
             self.traffic_light_timer += delta_time
             
-            remaining_time = int(self.get_traffic_light_duration() - self.traffic_light_timer)
-            if remaining_time < 0:
-                remaining_time = 0
-            self.simulator_screen.update_timer(remaining_time)
+            remaining_time = max(0, self.get_traffic_light_duration() - self.traffic_light_timer)
+            remaining_seconds = int(remaining_time)
+            
+            self.simulator_screen.update_timer(remaining_seconds)
             
             if self.traffic_light_timer >= self.get_traffic_light_duration():
                 self.start_transition()
@@ -284,7 +306,7 @@ class SimulationHandler:
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state("caution")
-            self.simulator_screen.update_timer_text(".")
+            self.simulator_screen.update_timer_text("...")
     
     def complete_transition(self):
         print("DEBUG: Completando transicion de semaforo (solo visual)")
@@ -307,9 +329,33 @@ class SimulationHandler:
     def update_simulation_logic(self, delta_time):
         if self.vehicle_manager:
             self.vehicle_manager.update(delta_time)
-        
-        if hasattr(self, 'canvas'):
-            self.ensure_vehicle_layering(self.canvas)
+            
+            for vehicle in self.vehicle_manager.get_vehicles():
+                vehicle.update(delta_time)
+                vehicle.draw(self.canvas)
+    
+    def setup_static_layering(self):
+        """Establece el orden de capas UNA sola vez al iniciar la simulacion"""
+        try:
+            self.canvas.tag_lower('container_border')
+            self.canvas.tag_raise('background_layer', 'container_border')
+            self.canvas.tag_raise('road_layer', 'background_layer')
+            self.canvas.tag_raise('vehicle_layer', 'road_layer')
+            self.canvas.tag_raise('grid_layer', 'vehicle_layer')
+            self.canvas.tag_raise('border_layer', 'grid_layer')
+            self.canvas.tag_raise('ui_element', 'border_layer')
+            
+            print("DEBUG: Orden de capas estatico establecido")
+            print("DEBUG: Orden final (abajo -> arriba):")
+            print("  1. container_border")
+            print("  2. background_layer (fondo diurno)")
+            print("  3. road_layer (carretera simulador)")
+            print("  4. vehicle_layer (vehiculos)")
+            print("  5. grid_layer (cuadricula)")
+            print("  6. border_layer (bordes)")
+            print("  7. ui_element (botones)")
+        except Exception as e:
+            print(f"ERROR al establecer layering estatico: {e}")
     
     def cleanup(self):
         print("DEBUG: Limpiando simulation_handler")
@@ -354,25 +400,3 @@ class SimulationHandler:
     
     def is_paused(self):
         return self.simulation_paused
-    
-    def ensure_vehicle_layering(self, canvas):
-        try:
-            # Orden correcto de capas (de abajo hacia arriba):
-            # 1. container_border (bordes decorativos)
-            # 2. background_layer (fondo diurno)
-            # 3. road_layer (carreteras del simulador)
-            # 4. vehicle_layer (vehiculos de simulacion)
-            # 5. grid_layer (grilla)
-            # 6. border_layer (bordes adicionales)
-            # 7. ui_element (botones y controles)
-            
-            canvas.tag_lower('container_border')
-            canvas.tag_raise('background_layer', 'container_border')
-            canvas.tag_raise('road_layer', 'background_layer')
-            canvas.tag_raise('vehicle_layer', 'road_layer')
-            canvas.tag_raise('grid_layer', 'vehicle_layer')
-            canvas.tag_raise('border_layer', 'grid_layer')
-            canvas.tag_raise('ui_element', 'border_layer')
-        except:
-            pass
-
