@@ -77,7 +77,10 @@ class SimulationVehicle(BackgroundElement):
         
         return random.choice(color_palettes)
     
-    def custom_update(self, delta_time):
+    def update(self, delta_time):
+        if not self.active:
+            return
+
         if self.direction == "right":
             self.set_velocity(self.current_speed, 0)
         elif self.direction == "left":
@@ -87,7 +90,8 @@ class SimulationVehicle(BackgroundElement):
         elif self.direction == "up":
             self.set_velocity(0, -self.current_speed)
 
-        super().update(delta_time)
+        self.x += self.vx * delta_time
+        self.y += self.vy * delta_time
     
     def deactivate(self):
         super().deactivate()
@@ -276,7 +280,8 @@ class SimulationVehicle(BackgroundElement):
 
 
 class SimulationVehicleManager:
-    def __init__(self, sim_area_x, sim_area_y, sim_area_width, sim_area_height):
+    def __init__(self, canvas, sim_area_x, sim_area_y, sim_area_width, sim_area_height):
+        self.canvas = canvas
         self.sim_area_x = sim_area_x
         self.sim_area_y = sim_area_y
         self.sim_area_width = sim_area_width
@@ -318,6 +323,7 @@ class SimulationVehicleManager:
         }
     
     def update(self, delta_time):
+        # Handle spawning new vehicles
         for lane in self.spawn_cooldowns:
             self.spawn_cooldowns[lane] -= delta_time
         
@@ -330,17 +336,23 @@ class SimulationVehicleManager:
                     self.vehicles.append(new_vehicle)
                     self.spawn_cooldowns[lane] = self.spawn_interval
         
+        # Adjust speeds for all vehicles based on their leaders
         self.adjust_vehicle_speeds(delta_time)
 
+        # Update, draw, and manage lifecycle of each vehicle
         for vehicle in self.vehicles[:]:
             if not vehicle.is_active():
                 vehicle.cleanup_canvas_items()
                 self.vehicles.remove(vehicle)
-            else:
-                if self.is_vehicle_completely_out_of_bounds(vehicle):
-                    vehicle.deactivate()
-                    vehicle.cleanup_canvas_items()
-                    self.vehicles.remove(vehicle)
+                continue
+
+            vehicle.update(delta_time)
+            vehicle.draw(self.canvas)
+
+            if self.is_vehicle_completely_out_of_bounds(vehicle):
+                vehicle.deactivate()
+                vehicle.cleanup_canvas_items()
+                self.vehicles.remove(vehicle)
 
     def adjust_vehicle_speeds(self, delta_time):
         leaders = {}

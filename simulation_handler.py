@@ -28,7 +28,7 @@ class SimulationHandler:
         self.simulation_vehicles = []
         
         self.vehicle_manager = SimulationVehicleManager(
-            sim_area_x, sim_area_y, sim_area_width, sim_area_height
+            self.canvas, sim_area_x, sim_area_y, sim_area_width, sim_area_height
         )
         
         self.button_y = 35
@@ -307,10 +307,6 @@ class SimulationHandler:
     def update_simulation_logic(self, delta_time):
         if self.vehicle_manager:
             self.vehicle_manager.update(delta_time)
-            
-            for vehicle in self.vehicle_manager.get_vehicles():
-                vehicle.update(delta_time)
-                vehicle.draw(self.canvas)
         
         if hasattr(self, 'canvas'):
             self.ensure_vehicle_layering(self.canvas)
