@@ -509,7 +509,7 @@ class BackgroundHandler:
     def draw_background(self):
         if not self.animation_active:
             return
-        
+    
         if len(self.background_elements) == 0:
             return
 
@@ -533,20 +533,10 @@ class BackgroundHandler:
                 except Exception as e:
                     self.debug_print(f"ERROR: No se pudo dibujar elemento {element.element_type}: {e}")
 
-        # CORREGIDO: Solo bajar elementos estaticos del fondo, NO vehiculos ni nubes
+        # Mantener orden de capas basico sin conflictos con el simulador
         try:
-            # Bajar solo cielo, edificios y carretera
+            # Solo bajar el fondo estatico
             self.canvas.tag_lower("background_layer")
-            # Subir vehiculos y nubes para que siempre esten visibles
-            for element in active_elements:
-                if element.element_type in ["vehicle", "cloud"]:
-                    for item_id in getattr(element, 'canvas_items', []):
-                        try:
-                            self.canvas.tag_raise(item_id)
-                        except:
-                            pass
-            # AGREGAR ESTA LINEA:
-            self.canvas.tag_raise("ui_element")
         except tk.TclError:
             self.animation_active = False
         except:

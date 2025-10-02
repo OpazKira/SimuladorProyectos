@@ -2,6 +2,7 @@ import tkinter as tk
 import time
 from screen_element import ButtonElement
 from simulation_vehicles import SimulationVehicleManager
+from simulation_counter import SimulationCounter
 
 class SimulationHandler:
     def __init__(self, canvas, screen_width, screen_height, sim_area_x, sim_area_y, sim_area_width, sim_area_height):
@@ -28,6 +29,10 @@ class SimulationHandler:
         self.simulation_vehicles = []
         
         self.vehicle_manager = SimulationVehicleManager(
+            sim_area_x, sim_area_y, sim_area_width, sim_area_height
+        )
+        
+        self.traffic_counter = SimulationCounter(
             sim_area_x, sim_area_y, sim_area_width, sim_area_height
         )
         
@@ -80,6 +85,8 @@ class SimulationHandler:
         self.simulation_active = True
         self.simulation_paused = False
         
+        self.ensure_vehicle_layering(self.canvas)
+        
         self.start_button.set_text("BORRAR")
         self.start_button.set_colors(
             bg_color="#F44336",
@@ -130,6 +137,7 @@ class SimulationHandler:
     def initialize_traffic_lights(self):
         self.traffic_light_state = "left_go"
         self.traffic_light_timer = 0
+        self.traffic_light_duration = 10.0
         self.is_transitioning = False
         self.transition_timer = 0
         
@@ -147,6 +155,8 @@ class SimulationHandler:
         print("DEBUG: Pausando simulacion")
         self.simulation_paused = True
         
+        self.ensure_vehicle_layering(self.canvas)
+        
         if self.pause_button:
             self.pause_button.set_text("REANUDAR")
             self.pause_button.set_colors(
@@ -159,6 +169,8 @@ class SimulationHandler:
         print("DEBUG: Reanudando simulacion")
         self.simulation_paused = False
         self.last_update_time = time.time()
+        
+        self.ensure_vehicle_layering(self.canvas)
         
         if self.pause_button:
             self.pause_button.set_text("PAUSAR")
@@ -217,6 +229,7 @@ class SimulationHandler:
         
         self.traffic_light_state = "left_go"
         self.traffic_light_timer = 0
+        self.traffic_light_duration = 10.0
         self.is_transitioning = False
         self.transition_timer = 0
         
@@ -278,7 +291,7 @@ class SimulationHandler:
                 self.start_transition()
     
     def start_transition(self):
-        print("DEBUG: Iniciando transicion de semaforo (solo visual)")
+        print("DEBUG: Iniciando transicion de semaforo")
         self.is_transitioning = True
         self.transition_timer = 0
         
@@ -287,15 +300,25 @@ class SimulationHandler:
             self.simulator_screen.update_timer_text(".")
     
     def complete_transition(self):
-        print("DEBUG: Completando transicion de semaforo (solo visual)")
+        print("DEBUG: Completando transicion de semaforo")
         self.is_transitioning = False
         self.transition_timer = 0
-        self.traffic_light_timer = 0
         
-        if self.traffic_light_state == "left_go":
-            self.traffic_light_state = "right_go"
+        current_state = self.traffic_light_state
+        
+        if self.traffic_light_state == 'left_go':
+            self.traffic_light_state = 'right_go'
         else:
-            self.traffic_light_state = "left_go"
+            self.traffic_light_state = 'left_go'
+        
+        if self.traffic_counter:
+            self.traffic_light_duration = self.traffic_counter.calculate_next_duration(
+                current_state, 
+                self.traffic_light_state
+            )
+            print(f"DEBUG: Duracion calculada para {self.traffic_light_state}: {self.traffic_light_duration}s")
+        
+        self.traffic_light_timer = 0
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state(self.traffic_light_state)
@@ -308,7 +331,12 @@ class SimulationHandler:
         if self.vehicle_manager:
             self.vehicle_manager.update(delta_time)
             
-            for vehicle in self.vehicle_manager.get_vehicles():
+            all_vehicles = self.vehicle_manager.get_vehicles()
+            
+            if self.traffic_counter:
+                self.traffic_counter.update(all_vehicles)
+            
+            for vehicle in all_vehicles:
                 vehicle.update(delta_time)
                 vehicle.draw(self.canvas)
         
@@ -361,22 +389,21 @@ class SimulationHandler:
     
     def ensure_vehicle_layering(self, canvas):
         try:
-            # Orden correcto de capas (de abajo hacia arriba):
-            # 1. container_border (bordes decorativos)
-            # 2. background_layer (fondo diurno)
+            # Orden correcto: el fondo del area va ENCIMA del background_layer pero DEBAJO de todo lo demas
+            # 1. background_layer (cielo, edificios del fondo general)
+            # 2. sim_background_layer (fondo gris del area - debe ser visible)
             # 3. road_layer (carreteras del simulador)
-            # 4. vehicle_layer (vehiculos de simulacion)
-            # 5. grid_layer (grilla)
-            # 6. border_layer (bordes adicionales)
-            # 7. ui_element (botones y controles)
+            # 4. vehicle_layer (vehiculos)
+            # 5. grid_layer, border_layer, ui_element
             
-            canvas.tag_lower('container_border')
-            canvas.tag_raise('background_layer', 'container_border')
-            canvas.tag_raise('road_layer', 'background_layer')
+            canvas.tag_lower('background_layer')
+            canvas.tag_raise('sim_background_layer', 'background_layer')
+            canvas.tag_raise('container_border', 'sim_background_layer')
+            canvas.tag_raise('road_layer', 'sim_background_layer')
             canvas.tag_raise('vehicle_layer', 'road_layer')
+            canvas.tag_raise('simulation_vehicle', 'road_layer')
             canvas.tag_raise('grid_layer', 'vehicle_layer')
             canvas.tag_raise('border_layer', 'grid_layer')
             canvas.tag_raise('ui_element', 'border_layer')
         except:
             pass
-

@@ -399,7 +399,6 @@ class DayBackgroundManager:
         try:
             from vehicle_elements import VehicleSpawnManager
             self.vehicle_manager = VehicleSpawnManager(screen_width, screen_height)
-            print("DEBUG: Sistema de vehiculos inicializado")
         except ImportError as e:
             print(f"Warning: No se pudo importar vehicle_elements: {e}")
             self.vehicle_manager = None
@@ -407,11 +406,9 @@ class DayBackgroundManager:
     def enable_cloud_spawning(self):
         self.cloud_spawn_enabled = True
         self.last_cloud_spawn_time = 0
-        print("DEBUG: Cloud spawning habilitado")
     
     def disable_cloud_spawning(self):
         self.cloud_spawn_enabled = False
-        print("DEBUG: Cloud spawning deshabilitado")
     
     def should_spawn_cloud(self):
         if not self.cloud_spawn_enabled:
@@ -434,10 +431,8 @@ class DayBackgroundManager:
         
         for cloud in self.active_clouds:
             if cloud.x < self.min_cloud_horizontal_spacing:
-                print(f"DEBUG: Nube bloqueando spawn en X:{cloud.x:.1f} (necesita >{self.min_cloud_horizontal_spacing})")
                 return False
         
-        print(f"DEBUG: Condiciones de spawn cumplidas - spawneando nube")
         return True
     
     def find_valid_cloud_position(self, max_attempts=15):
@@ -487,30 +482,20 @@ class DayBackgroundManager:
         self.active_clouds.append(cloud)
         self.last_cloud_spawn_time = time.time()
         
-        print(f"DEBUG: Nube spawneada en Y:{y_position}, depth:{chosen_depth}, nubes activas:{len(self.active_clouds)}")
-        
         return cloud
     
     def update_clouds(self, delta_time):
         self.active_clouds = [cloud for cloud in self.active_clouds if cloud.is_active()]
         
-        if len(self.active_clouds) > 0:
-            leftmost_x = min(cloud.x for cloud in self.active_clouds)
-            print(f"DEBUG: {len(self.active_clouds)} nubes activas, nube mas a la izquierda en X:{leftmost_x:.1f}")
-        
         if self.should_spawn_cloud():
             spawned = self.spawn_cloud()
-            if spawned:
-                print(f"DEBUG: Nueva nube agregada exitosamente, total: {len(self.active_clouds)}")
+    
     def update_vehicles(self, delta_time, background_elements):
-        """Actualizar sistema de vehiculos"""
         if not self.vehicle_manager:
             return []
     
-        # Obtener nuevos vehiculos del manager
         new_vehicles = list(self.vehicle_manager.update(delta_time, background_elements))
     
-        # Retornar lista de nuevos vehiculos para agregar
         return new_vehicles
     
     def generate_building_positions(self, road_top, layer_type="front"):
@@ -563,11 +548,8 @@ class DayBackgroundManager:
         return positions
     
     def create_from_transition_state(self, transition_state):
-        # NO limpiar todos los elementos, solo los que no son vehiculos
         elements_to_keep = [e for e in self.elements if e.element_type == "vehicle"]
         self.elements = elements_to_keep
-    
-        print("DEBUG: Creando fondo diurno desde estado de transicion")
     
         sky_created = False
         road_created = False
@@ -587,7 +569,6 @@ class DayBackgroundManager:
                 sky.show()
                 self.elements.append(sky)
                 sky_created = True
-                print(f"DEBUG: Cielo diurno creado")
             
             elif 'road' in key and not road_created:
                 road = DayRoadElement(self.screen_width, self.screen_height)
@@ -595,7 +576,6 @@ class DayBackgroundManager:
                 road.show()
                 self.elements.append(road)
                 road_created = True
-                print(f"DEBUG: Carretera diurna creada")
             
             elif 'building' in key:
                 layer = data.get('layer', 'front')
@@ -623,36 +603,29 @@ class DayBackgroundManager:
                 sun.show()
                 self.elements.append(sun)
                 sun_created = True
-                print(f"DEBUG: Sol diurno creado")
     
         if not sky_created:
             sky = DaySkyElement(self.screen_width, self.screen_height)
             sky.activate()
             sky.show()
             self.elements.insert(0, sky)
-            print("DEBUG: Cielo diurno creado como fallback")
         
         if not road_created:
             road = DayRoadElement(self.screen_width, self.screen_height)
             road.activate()
             road.show()
             self.elements.append(road)
-            print("DEBUG: Carretera diurna creada como fallback")
         
         if not sun_created:
             sun = DaySunElement(self.screen_width, self.screen_height)
             sun.activate()
             sun.show()
             self.elements.append(sun)
-            print("DEBUG: Sol diurno creado como fallback")
     
-        print(f"DEBUG: Fondo diurno creado con {len(self.elements)} elementos desde transicion (preservando vehiculos)")
         return self.elements
     
     def create_day_background(self):
         self.elements.clear()
-        
-        print("DEBUG: Creando fondo diurno estandar")
         
         sky = DaySkyElement(self.screen_width, self.screen_height)
         sky.activate()
@@ -684,7 +657,6 @@ class DayBackgroundManager:
         sun.show()
         self.elements.append(sun)
         
-        print(f"DEBUG: Fondo diurno estandar creado con {len(self.elements)} elementos")
         return self.elements
     
     def get_elements(self):

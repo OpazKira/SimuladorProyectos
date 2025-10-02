@@ -96,7 +96,6 @@ class SimulatorScreen(ScreenHandler):
     def create_simulation_container(self):
         padding = 20
         
-        # Bordes SOLO con outline, sin fill para que sean transparentes
         outer_border = self.canvas.create_rectangle(
             self.sim_area_x - padding, 
             self.sim_area_y - padding,
@@ -258,12 +257,34 @@ class SimulatorScreen(ScreenHandler):
             self.canvas.itemconfig(self.timer_text, text=text)
     
     def create_simulation_area(self):
-        # NO crear fondo que tape el background diurno
-        # Solo dibujar carreteras y grilla encima del fondo existente
-        
+        # Crear fondo del area de simulacion (SOLO con su propia tag)
+        sim_bg = self.canvas.create_rectangle(
+            self.sim_area_x, self.sim_area_y,
+            self.sim_area_x + self.sim_area_width,
+            self.sim_area_y + self.sim_area_height,
+            fill="#f0f0f5",
+            outline="",
+            tags=("sim_background_layer",)
+        )
+        self.add_ui_element(sim_bg)
+    
         self.draw_simulation_roads()
         self.draw_simulation_grid()
         self.create_clipping_borders()
+    
+    def create_simulation_background(self):
+        bg_color = "#f0f0f5"
+        
+        sim_bg = self.canvas.create_rectangle(
+            self.sim_area_x,
+            self.sim_area_y,
+            self.sim_area_x + self.sim_area_width,
+            self.sim_area_y + self.sim_area_height,
+            fill=bg_color,
+            outline="",
+            tags=("simulator_ui", "sim_background_layer")
+        )
+        self.add_ui_element(sim_bg)
     
     def draw_simulation_roads(self):
         road_color = "#5a5a5a"
@@ -277,42 +298,42 @@ class SimulatorScreen(ScreenHandler):
         box_id = self.canvas.create_rectangle(
             self.sim_area_x, center_y + road_width//2 - 4,
             self.sim_area_x + self.sim_area_width, center_y + road_width//2,
-            fill=border_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=border_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(box_id)
         
         box_id = self.canvas.create_rectangle(
             self.sim_area_x, center_y - road_width//2,
             self.sim_area_x + self.sim_area_width, center_y - road_width//2 + 4,
-            fill=border_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=border_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(box_id)
         
         box_id = self.canvas.create_rectangle(
             center_x + road_width//2 - 4, self.sim_area_y,
             center_x + road_width//2, self.sim_area_y + self.sim_area_height,
-            fill=border_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=border_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(box_id)
         
         box_id = self.canvas.create_rectangle(
             center_x - road_width//2, self.sim_area_y,
             center_x - road_width//2 + 4, self.sim_area_y + self.sim_area_height,
-            fill=border_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=border_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(box_id)
         
         h_road_id = self.canvas.create_rectangle(
             self.sim_area_x, center_y - road_width//2 + 4,
             self.sim_area_x + self.sim_area_width, center_y + road_width//2 - 4,
-            fill=road_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=road_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(h_road_id)
         
         v_road_id = self.canvas.create_rectangle(
             center_x - road_width//2 + 4, self.sim_area_y,
             center_x + road_width//2 - 4, self.sim_area_y + self.sim_area_height,
-            fill=road_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+            fill=road_color, outline="", tags=("simulator_ui", "road_layer")
         )
         self.add_ui_element(v_road_id)
         
@@ -325,14 +346,14 @@ class SimulatorScreen(ScreenHandler):
                 line_id = self.canvas.create_rectangle(
                     dash_x, center_y - 4,
                     min(dash_x + dash_width, self.sim_area_x + self.sim_area_width), center_y - 2,
-                    fill=line_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+                    fill=line_color, outline="", tags=("simulator_ui", "road_layer")
                 )
                 self.add_ui_element(line_id)
                 
                 line_id = self.canvas.create_rectangle(
                     dash_x, center_y + 2,
                     min(dash_x + dash_width, self.sim_area_x + self.sim_area_width), center_y + 4,
-                    fill=line_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+                    fill=line_color, outline="", tags=("simulator_ui", "road_layer")
                 )
                 self.add_ui_element(line_id)
         
@@ -341,14 +362,14 @@ class SimulatorScreen(ScreenHandler):
                 line_id = self.canvas.create_rectangle(
                     center_x - 4, dash_y,
                     center_x - 2, min(dash_y + dash_width, self.sim_area_y + self.sim_area_height),
-                    fill=line_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+                    fill=line_color, outline="", tags=("simulator_ui", "road_layer")
                 )
                 self.add_ui_element(line_id)
                 
                 line_id = self.canvas.create_rectangle(
                     center_x + 2, dash_y,
                     center_x + 4, min(dash_y + dash_width, self.sim_area_y + self.sim_area_height),
-                    fill=line_color, outline="", tags=("simulator_ui", "ui_element", "road_layer")
+                    fill=line_color, outline="", tags=("simulator_ui", "road_layer")
                 )
                 self.add_ui_element(line_id)
     
@@ -363,7 +384,7 @@ class SimulatorScreen(ScreenHandler):
                 fill=grid_color,
                 width=1,
                 dash=(2, 4),
-                tags=("simulator_ui", "ui_element", "grid_layer")
+                tags=("simulator_ui", "grid_layer")
             )
             self.add_ui_element(line)
         
@@ -374,22 +395,17 @@ class SimulatorScreen(ScreenHandler):
                 fill=grid_color,
                 width=1,
                 dash=(2, 4),
-                tags=("simulator_ui", "ui_element", "grid_layer")
+                tags=("simulator_ui", "grid_layer")
             )
             self.add_ui_element(line)
     
     def create_clipping_borders(self):
-        # Definir los limites del area de simulacion para clipping de vehiculos
         self.sim_area_bounds = {
             'left': self.sim_area_x,
             'right': self.sim_area_x + self.sim_area_width,
             'top': self.sim_area_y,
             'bottom': self.sim_area_y + self.sim_area_height
         }
-        
-        # NO crear mascaras rectangulares que tapen el fondo
-        # Los vehiculos se ocultaran automaticamente cuando salgan del area
-        # usando la logica en simulation_vehicles.py
     
     def create_back_button(self):
         back_button = ButtonElement(
@@ -468,8 +484,6 @@ class SimulatorScreen(ScreenHandler):
         self.setup_cursor_callbacks()
         
         self.cursor_handler.enable_smooth_movement(0.9)
-        
-        # NO cambiar el color del canvas, mantener el fondo diurno visible
     
     def on_hide(self):
         print("DEBUG: Simulator on_hide llamado")
@@ -496,6 +510,7 @@ class SimulatorScreen(ScreenHandler):
         try:
             self.canvas.delete("simulator_ui")
             self.canvas.delete("simulation_vehicle")
+            self.canvas.delete("sim_background_layer")
             self.canvas.delete("road_layer")
             self.canvas.delete("vehicle_layer")
             self.canvas.delete("grid_layer")
@@ -504,8 +519,6 @@ class SimulatorScreen(ScreenHandler):
             pass
     
         self.clear_ui_elements()
-        
-        # NO restaurar color celeste, mantener el fondo diurno
     
     def on_update(self):
         if self.simulation_running:

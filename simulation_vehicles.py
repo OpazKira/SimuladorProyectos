@@ -3,36 +3,49 @@ import math
 from background_element import BackgroundElement
 
 class SimulationVehicle(BackgroundElement):
-    def __init__(self, x, y, vehicle_type="sedan", direction="right"):
+    def __init__(self, vehicle_type, lane, direction):
         self.vehicle_type = vehicle_type
+        self.lane = lane
         self.direction = direction
         
-        width, height = self.get_vehicle_dimensions(vehicle_type, direction)
-        super().__init__(x, y, width, height)
+        width, height = self.get_vehicle_dimensions(vehicle_type, lane)
+        super().__init__(0, 0, width, height)
         
         self.element_type = "simulation_vehicle"
         self.set_depth(-86)
         self.add_tag("simulation_vehicle")
         self.add_tag("simulator_ui")
+        self.add_tag(lane)
         
         self.vehicle_colors = self.get_vehicle_colors(vehicle_type)
         self.set_color(self.vehicle_colors['body'])
         
-        self.speed = random.uniform(80, 150)
+        self.base_speed = self.get_random_speed()
+        self.current_speed = self.base_speed
+        self.target_speed = self.base_speed
         
-        if direction == "right":
-            self.set_velocity(self.speed, 0)
-        elif direction == "left":
-            self.set_velocity(-self.speed, 0)
-        elif direction == "down":
-            self.set_velocity(0, self.speed)
-        elif direction == "up":
-            self.set_velocity(0, -self.speed)
+        if 'horizontal' in lane:
+            if direction > 0:
+                self.set_velocity(self.base_speed, 0)
+            else:
+                self.set_velocity(-self.base_speed, 0)
+        else:
+            if direction > 0:
+                self.set_velocity(0, self.base_speed)
+            else:
+                self.set_velocity(0, -self.base_speed)
+        
+        self.vehicle_color = self.get_random_vehicle_color()
+        self.set_color(self.vehicle_color)
         
         self.canvas_items = []
         self.clip_bounds = None
+        
+        self.safe_distance = self.width * 2.0
+        self.deceleration_distance = self.width * 5.0
+        self.acceleration_distance = self.width * 7.0
     
-    def get_vehicle_dimensions(self, vehicle_type, direction):
+    def get_vehicle_dimensions(self, vehicle_type, lane):
         base_dimensions = {
             'compact': (40, 25),
             'sedan': (50, 25),
@@ -48,7 +61,7 @@ class SimulationVehicle(BackgroundElement):
         
         base_width, base_height = base_dimensions.get(vehicle_type, (50, 25))
         
-        if direction in ["right", "left"]:
+        if 'horizontal' in lane:
             return (base_width, base_height)
         else:
             return (base_height, base_width)
@@ -74,8 +87,56 @@ class SimulationVehicle(BackgroundElement):
         
         return random.choice(color_palettes)
     
+    def get_random_vehicle_color(self):
+        colors = [
+            '#E53935', '#1E88E5', '#43A047', '#FDD835', '#FB8C00',
+            '#8E24AA', '#00ACC1', '#212121', '#FFFFFF', '#6D4C41',
+            '#F06292', '#9575CD', '#4DD0E1', '#AED581', '#FF8A65'
+        ]
+        return random.choice(colors)
+    
+    def get_random_speed(self):
+        speeds = [90, 110, 130, 150, 170]
+        return random.choice(speeds)
+    
     def custom_update(self, delta_time):
-        pass
+        if self.current_speed != self.target_speed:
+            speed_diff = self.target_speed - self.current_speed
+            acceleration_rate = 3.0 if speed_diff > 0 else 4.0
+            adjustment = speed_diff * delta_time * acceleration_rate
+            
+            if abs(adjustment) > abs(speed_diff):
+                self.current_speed = self.target_speed
+            else:
+                self.current_speed += adjustment
+            
+            if 'horizontal' in self.lane:
+                if self.direction > 0:
+                    self.set_velocity(self.current_speed, 0)
+                else:
+                    self.set_velocity(-self.current_speed, 0)
+            else:
+                if self.direction > 0:
+                    self.set_velocity(0, self.current_speed)
+                else:
+                    self.set_velocity(0, -self.current_speed)
+    
+    def adjust_speed_for_traffic(self, distance, other_vehicle):
+        if distance is None or other_vehicle is None:
+            self.target_speed = self.base_speed
+            return
+        
+        if distance < self.safe_distance:
+            self.target_speed = max(other_vehicle.current_speed * 0.85, 40)
+        elif distance < self.deceleration_distance:
+            ratio = distance / self.deceleration_distance
+            target = other_vehicle.current_speed + (self.base_speed - other_vehicle.current_speed) * ratio
+            self.target_speed = min(self.base_speed, max(target, 50))
+        elif distance < self.acceleration_distance:
+            ratio = (distance - self.deceleration_distance) / (self.acceleration_distance - self.deceleration_distance)
+            self.target_speed = other_vehicle.current_speed + (self.base_speed - other_vehicle.current_speed) * ratio
+        else:
+            self.target_speed = self.base_speed
     
     def deactivate(self):
         super().deactivate()
@@ -127,14 +188,12 @@ class SimulationVehicle(BackgroundElement):
         final_x = self.x + self.offset_x
         final_y = self.y + self.offset_y
         
-        # CLIPPING MEJORADO: Ocultar completamente si cualquier parte del vehiculo sale del area
         if self.clip_bounds:
             vehicle_left = final_x
             vehicle_right = final_x + self.width
             vehicle_top = final_y
             vehicle_bottom = final_y + self.height
             
-            # Si el vehiculo esta completamente fuera del area, ocultarlo
             if (vehicle_right < self.clip_bounds['left'] or 
                 vehicle_left > self.clip_bounds['right'] or
                 vehicle_bottom < self.clip_bounds['top'] or 
@@ -148,13 +207,11 @@ class SimulationVehicle(BackgroundElement):
                             pass
                 return
         
-        # Crear o actualizar vehiculo
         if not hasattr(self, 'canvas_items') or not self.canvas_items:
             self.canvas_items = self.create_vehicle_visual(canvas, final_x, final_y)
         else:
             self.update_vehicle_position(canvas, final_x, final_y)
         
-        # Asegurar que todos los items esten visibles si llegamos aqui
         if hasattr(self, 'canvas_items') and self.canvas_items:
             for item_id in self.canvas_items:
                 try:
@@ -165,7 +222,7 @@ class SimulationVehicle(BackgroundElement):
     def create_vehicle_visual(self, canvas, x, y):
         items = []
         
-        if self.direction in ["right", "left"]:
+        if 'horizontal' in self.lane:
             items.extend(self.draw_horizontal_vehicle(canvas, x, y))
         else:
             items.extend(self.draw_vertical_vehicle(canvas, x, y))
@@ -184,7 +241,7 @@ class SimulationVehicle(BackgroundElement):
         )
         items.append(body)
         
-        if self.direction == "right":
+        if self.direction > 0:
             window_x1 = x + self.width * 0.6
             window_x2 = x + self.width * 0.95
             light_x = x + self.width - 3
@@ -223,7 +280,7 @@ class SimulationVehicle(BackgroundElement):
         )
         items.append(body)
         
-        if self.direction == "down":
+        if self.direction > 0:
             window_y1 = y + self.height * 0.6
             window_y2 = y + self.height * 0.95
             light_y = y + self.height - 3
@@ -308,6 +365,13 @@ class SimulationVehicleManager:
             'vertical_left': center_x - road_width // 4,
             'vertical_right': center_x + road_width // 4
         }
+        
+        self.lane_directions = {
+            'horizontal_bottom': 1,
+            'horizontal_top': -1,
+            'vertical_left': 1,
+            'vertical_right': -1
+        }
     
     def update(self, delta_time):
         for lane in self.spawn_cooldowns:
@@ -317,8 +381,16 @@ class SimulationVehicleManager:
             lane_vehicles = [v for v in self.vehicles if v.has_tag(lane)]
             
             if self.spawn_cooldowns[lane] <= 0 and len(lane_vehicles) < self.max_vehicles_per_lane:
-                self.spawn_vehicle(lane)
-                self.spawn_cooldowns[lane] = self.spawn_interval
+                spawned = self.spawn_vehicle(lane)
+                if spawned:
+                    self.spawn_cooldowns[lane] = self.spawn_interval
+        
+        vehicles_by_lane = {
+            'horizontal_bottom': [],
+            'horizontal_top': [],
+            'vertical_left': [],
+            'vertical_right': []
+        }
         
         for vehicle in self.vehicles[:]:
             if not vehicle.is_active():
@@ -329,50 +401,120 @@ class SimulationVehicleManager:
                     vehicle.deactivate()
                     vehicle.cleanup_canvas_items()
                     self.vehicles.remove(vehicle)
+                else:
+                    for lane in vehicles_by_lane.keys():
+                        if vehicle.has_tag(lane):
+                            vehicles_by_lane[lane].append(vehicle)
+                            break
+        
+        for lane, lane_vehicles in vehicles_by_lane.items():
+            lane_vehicles.sort(key=lambda v: v.x if 'horizontal' in lane else v.y)
+            
+            for i, vehicle in enumerate(lane_vehicles):
+                vehicle_ahead = None
+                min_distance = float('inf')
+                
+                for other in lane_vehicles:
+                    if other == vehicle:
+                        continue
+                    
+                    if 'horizontal_bottom' in lane:
+                        if other.x > vehicle.x:
+                            distance = other.x - (vehicle.x + vehicle.width)
+                            if distance < min_distance:
+                                min_distance = distance
+                                vehicle_ahead = other
+                    elif 'horizontal_top' in lane:
+                        if other.x < vehicle.x:
+                            distance = vehicle.x - (other.x + other.width)
+                            if distance < min_distance:
+                                min_distance = distance
+                                vehicle_ahead = other
+                    elif 'vertical_left' in lane:
+                        if other.y > vehicle.y:
+                            distance = other.y - (vehicle.y + vehicle.height)
+                            if distance < min_distance:
+                                min_distance = distance
+                                vehicle_ahead = other
+                    elif 'vertical_right' in lane:
+                        if other.y < vehicle.y:
+                            distance = vehicle.y - (other.y + other.height)
+                            if distance < min_distance:
+                                min_distance = distance
+                                vehicle_ahead = other
+                
+                if vehicle_ahead:
+                    vehicle.adjust_speed_for_traffic(min_distance, vehicle_ahead)
+                else:
+                    vehicle.adjust_speed_for_traffic(None, None)
     
     def is_vehicle_completely_out_of_bounds(self, vehicle):
         margin = 10
         
-        if vehicle.direction == "right":
+        if 'horizontal_bottom' in vehicle.lane:
             return vehicle.x > self.sim_area_x + self.sim_area_width + margin
-        elif vehicle.direction == "left":
+        elif 'horizontal_top' in vehicle.lane:
             return vehicle.x + vehicle.width < self.sim_area_x - margin
-        elif vehicle.direction == "down":
+        elif 'vertical_left' in vehicle.lane:
             return vehicle.y > self.sim_area_y + self.sim_area_height + margin
-        elif vehicle.direction == "up":
+        elif 'vertical_right' in vehicle.lane:
             return vehicle.y + vehicle.height < self.sim_area_y - margin
         
         return False
     
     def spawn_vehicle(self, lane):
         vehicle_type = random.choice(self.vehicle_types)
+        direction = self.lane_directions[lane]
         
-        if lane == 'horizontal_bottom':
-            direction = 'right'
-            x = self.sim_area_x - 100
-            y = self.lane_positions['horizontal_bottom']
-        elif lane == 'horizontal_top':
-            direction = 'left'
-            x = self.sim_area_x + self.sim_area_width + 100
-            y = self.lane_positions['horizontal_top']
-        elif lane == 'vertical_left':
-            direction = 'down'
-            x = self.lane_positions['vertical_left']
-            y = self.sim_area_y - 100
+        vehicle = SimulationVehicle(vehicle_type, lane, direction)
+        
+        if 'horizontal_bottom' in lane:
+            x = self.sim_area_x - vehicle.width - 50
+            y = self.lane_positions['horizontal_bottom'] - vehicle.height // 2
+        elif 'horizontal_top' in lane:
+            x = self.sim_area_x + self.sim_area_width + 50
+            y = self.lane_positions['horizontal_top'] - vehicle.height // 2
+        elif 'vertical_left' in lane:
+            x = self.lane_positions['vertical_left'] - vehicle.width // 2
+            y = self.sim_area_y - vehicle.height - 50
         else:
-            direction = 'up'
-            x = self.lane_positions['vertical_right']
-            y = self.sim_area_y + self.sim_area_height + 100
+            x = self.lane_positions['vertical_right'] - vehicle.width // 2
+            y = self.sim_area_y + self.sim_area_height + 50
         
-        vehicle = SimulationVehicle(x, y, vehicle_type, direction)
+        lane_vehicles = [v for v in self.vehicles if v.has_tag(lane)]
+        
+        if not self.check_spawn_collision(x, y, vehicle.width, vehicle.height, lane_vehicles, direction):
+            return None
+        
+        vehicle.x = x
+        vehicle.y = y
+        vehicle.original_x = x
+        vehicle.original_y = y
         vehicle.activate()
         vehicle.show()
-        vehicle.add_tag(lane)
         vehicle.set_clip_bounds(self.clip_bounds)
         
         self.vehicles.append(vehicle)
         
         return vehicle
+    
+    def check_spawn_collision(self, spawn_x, spawn_y, vehicle_width, vehicle_height, lane_vehicles, direction):
+        min_gap = 250
+    
+        for vehicle in lane_vehicles:
+            if not vehicle.is_active():
+                continue
+            
+            if direction > 0:
+                distance_ahead = vehicle.x - (spawn_x + vehicle_width)
+                if distance_ahead < min_gap and distance_ahead > -vehicle_width:
+                    return False
+            else:
+                distance_ahead = spawn_x - (vehicle.x + vehicle.width)
+                if distance_ahead < min_gap and distance_ahead > -vehicle_width:
+                    return False
+    
+        return True
     
     def clear_all(self):
         for vehicle in self.vehicles[:]:
