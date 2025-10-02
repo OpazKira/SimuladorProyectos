@@ -3,10 +3,11 @@ import math
 from background_element import BackgroundElement
 
 class SimulationVehicle(BackgroundElement):
-    def __init__(self, vehicle_type, lane, direction):
+    def __init__(self, vehicle_type, lane, direction, intersection_bounds):
         self.vehicle_type = vehicle_type
         self.lane = lane
         self.direction = direction
+        self.intersection_bounds = intersection_bounds
         
         width, height = self.get_vehicle_dimensions(vehicle_type, lane)
         super().__init__(0, 0, width, height)
@@ -45,7 +46,6 @@ class SimulationVehicle(BackgroundElement):
         self.deceleration_distance = self.width * 5.0
         self.acceleration_distance = self.width * 7.0
         
-        self.stop_line_distance = self.width * 8.0
         self.stopping_at_light = False
         self.waiting_at_light = False
     
@@ -149,95 +149,69 @@ class SimulationVehicle(BackgroundElement):
             else:
                 return "yellow_to_red" if is_horizontal else "yellow_to_green"
     
-    def adjust_speed_for_traffic_and_lights(self, distance_to_vehicle, other_vehicle, 
-                                           distance_to_stop_line, is_in_intersection,
-                                           traffic_status, has_passed_intersection):
+    def adjust_speed_for_traffic_and_lights(self, distance_to_vehicle, vehicle_ahead, vehicle_behind,
+                                           distance_to_stop_line, traffic_status):
+        is_in_intersection = self.is_in_intersection()
+        has_passed_intersection = self.has_passed_intersection()
+
         if has_passed_intersection:
-            if distance_to_vehicle is not None and other_vehicle is not None:
-                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+            if (vehicle_behind and vehicle_behind.is_in_intersection() and
+                (traffic_status == 'yellow_to_red' or traffic_status == 'red')):
+                if distance_to_vehicle is not None and vehicle_ahead is not None:
+                    self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
+                    self.target_speed = max(self.target_speed, self.base_speed * 1.1)
+                else:
+                    self.target_speed = self.base_speed * 1.2
             else:
-                self.target_speed = self.base_speed
-                self.stopping_at_light = False
-                self.waiting_at_light = False
+                if distance_to_vehicle is not None and vehicle_ahead is not None:
+                    self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
+                else:
+                    self.target_speed = self.base_speed
+
+            self.stopping_at_light = False
+            self.waiting_at_light = False
             return
-        
+
         if traffic_status == "no_light" or traffic_status == "green":
-            if distance_to_vehicle is not None and other_vehicle is not None:
-                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+            if distance_to_vehicle is not None and vehicle_ahead is not None:
+                self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
             else:
                 self.target_speed = self.base_speed
             self.stopping_at_light = False
             self.waiting_at_light = False
             return
-        
-        if traffic_status == "yellow_to_red":
+
+        is_stopping_light = traffic_status in ["yellow_to_red", "red", "yellow_to_green"]
+        if is_stopping_light:
             if is_in_intersection:
-                if distance_to_vehicle is not None and other_vehicle is not None:
-                    self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                if distance_to_vehicle is not None and vehicle_ahead is not None:
+                    self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
                 else:
-                    self.target_speed = self.base_speed
+                    self.target_speed = self.base_speed * 1.2
                 self.stopping_at_light = False
                 self.waiting_at_light = False
             else:
-                if distance_to_stop_line is not None:
-                    if distance_to_vehicle is not None and other_vehicle is not None:
-                        if other_vehicle.stopping_at_light or other_vehicle.waiting_at_light:
-                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                            self.stopping_at_light = True
-                        else:
-                            vehicle_distance_priority = distance_to_vehicle < distance_to_stop_line
-                            if vehicle_distance_priority:
-                                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                            else:
-                                if distance_to_stop_line < self.stop_line_distance:
-                                    self.target_speed = 0
-                                    self.stopping_at_light = True
-                                else:
-                                    self.target_speed = self.base_speed
-                    else:
-                        if distance_to_stop_line < self.stop_line_distance:
-                            self.target_speed = 0
-                            self.stopping_at_light = True
-                        else:
-                            self.target_speed = self.base_speed
+                is_stopping = traffic_status == 'yellow_to_red'
+                is_waiting = traffic_status in ['red', 'yellow_to_green']
+
+                if vehicle_ahead and (vehicle_ahead.stopping_at_light or vehicle_ahead.waiting_at_light):
+                    self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
+                    if is_stopping: self.stopping_at_light = True
+                    if is_waiting: self.waiting_at_light = True
+                elif distance_to_stop_line is not None and distance_to_stop_line < self.deceleration_distance:
+                    self.target_speed = 0
+                    if is_stopping: self.stopping_at_light = True
+                    if is_waiting: self.waiting_at_light = True
                 else:
-                    if distance_to_vehicle is not None and other_vehicle is not None:
-                        self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                    if distance_to_vehicle is not None and vehicle_ahead is not None:
+                        self.adjust_speed_for_traffic(distance_to_vehicle, vehicle_ahead)
                     else:
                         self.target_speed = self.base_speed
-            return
-        
-        if traffic_status == "red" or traffic_status == "yellow_to_green":
-            if is_in_intersection:
-                if distance_to_vehicle is not None and other_vehicle is not None:
-                    self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                else:
-                    self.target_speed = self.base_speed
-                self.stopping_at_light = False
-                self.waiting_at_light = False
-            else:
-                if distance_to_vehicle is not None and other_vehicle is not None:
-                    if other_vehicle.waiting_at_light or other_vehicle.stopping_at_light:
-                        self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                        self.target_speed = 0
-                        self.waiting_at_light = True
-                    else:
-                        vehicle_ahead_stopped = other_vehicle.current_speed < 5
-                        if vehicle_ahead_stopped:
-                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                            self.target_speed = 0
-                            self.waiting_at_light = True
-                        else:
-                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
-                else:
-                    self.target_speed = 0
-                    self.waiting_at_light = True
                     self.stopping_at_light = False
+                    self.waiting_at_light = False
                 
-                if traffic_status == "yellow_to_green":
-                    if self.waiting_at_light and self.current_speed < 1:
-                        if distance_to_vehicle is None or distance_to_vehicle > self.safe_distance * 1.5:
-                            self.target_speed = self.base_speed * 0.3
+                if traffic_status == "yellow_to_green" and self.waiting_at_light:
+                    self.target_speed = 0
             return
     
     def adjust_speed_for_traffic(self, distance, other_vehicle):
@@ -442,6 +416,32 @@ class SimulationVehicle(BackgroundElement):
         self.original_x = x
         self.original_y = y
 
+    def is_in_intersection(self):
+        if not hasattr(self, 'intersection_bounds') or not self.intersection_bounds:
+            return False
+        vehicle_center_x = self.x + self.width / 2
+        vehicle_center_y = self.y + self.height / 2
+
+        return (self.intersection_bounds['left'] <= vehicle_center_x <= self.intersection_bounds['right'] and
+                self.intersection_bounds['top'] <= vehicle_center_y <= self.intersection_bounds['bottom'])
+
+    def has_passed_intersection(self):
+        if not hasattr(self, 'intersection_bounds') or not self.intersection_bounds:
+            return False
+        vehicle_center_x = self.x + self.width / 2
+        vehicle_center_y = self.y + self.height / 2
+
+        if 'horizontal_bottom' in self.lane:
+            return vehicle_center_x > self.intersection_bounds['right']
+        elif 'horizontal_top' in self.lane:
+            return vehicle_center_x < self.intersection_bounds['left']
+        elif 'vertical_left' in self.lane:
+            return vehicle_center_y > self.intersection_bounds['bottom']
+        elif 'vertical_right' in self.lane:
+            return vehicle_center_y < self.intersection_bounds['top']
+
+        return False
+
 
 class SimulationVehicleManager:
     def __init__(self, sim_area_x, sim_area_y, sim_area_width, sim_area_height):
@@ -499,11 +499,13 @@ class SimulationVehicleManager:
             'bottom': center_y + road_width // 2
         }
         
+        stop_line_margin = road_width * 0.25
+
         self.stop_line_positions = {
-            'horizontal_bottom': center_x - road_width // 2 - 5,
-            'horizontal_top': center_x + road_width // 2 + 5,
-            'vertical_left': center_y - road_width // 2 - 5,
-            'vertical_right': center_y + road_width // 2 + 5
+            'horizontal_bottom': self.intersection_bounds['left'] - stop_line_margin,
+            'horizontal_top': self.intersection_bounds['right'] + stop_line_margin,
+            'vertical_left': self.intersection_bounds['top'] - stop_line_margin,
+            'vertical_right': self.intersection_bounds['bottom'] + stop_line_margin
         }
         
         self.current_traffic_state = "off"
@@ -514,28 +516,6 @@ class SimulationVehicleManager:
         self.current_traffic_state = traffic_state
         self.is_transitioning = is_transitioning
         self.next_traffic_state = next_state
-    
-    def is_vehicle_in_intersection(self, vehicle):
-        vehicle_center_x = vehicle.x + vehicle.width / 2
-        vehicle_center_y = vehicle.y + vehicle.height / 2
-        
-        return (self.intersection_bounds['left'] <= vehicle_center_x <= self.intersection_bounds['right'] and
-                self.intersection_bounds['top'] <= vehicle_center_y <= self.intersection_bounds['bottom'])
-    
-    def has_vehicle_passed_intersection(self, vehicle):
-        vehicle_center_x = vehicle.x + vehicle.width / 2
-        vehicle_center_y = vehicle.y + vehicle.height / 2
-        
-        if 'horizontal_bottom' in vehicle.lane:
-            return vehicle_center_x > self.intersection_bounds['right']
-        elif 'horizontal_top' in vehicle.lane:
-            return vehicle_center_x < self.intersection_bounds['left']
-        elif 'vertical_left' in vehicle.lane:
-            return vehicle_center_y > self.intersection_bounds['bottom']
-        elif 'vertical_right' in vehicle.lane:
-            return vehicle_center_y < self.intersection_bounds['top']
-        
-        return False
     
     def get_distance_to_stop_line(self, vehicle):
         if 'horizontal_bottom' in vehicle.lane:
@@ -596,45 +576,40 @@ class SimulationVehicleManager:
                             break
         
         for lane, lane_vehicles in vehicles_by_lane.items():
-            lane_vehicles.sort(key=lambda v: v.x if 'horizontal' in lane else v.y)
-            
+            is_horizontal = 'horizontal' in lane
+            sort_key = (lambda v: v.x) if is_horizontal else (lambda v: v.y)
+            lane_vehicles.sort(key=sort_key)
+
             for i, vehicle in enumerate(lane_vehicles):
+                direction = self.lane_directions[lane]
+                
                 vehicle_ahead = None
-                min_distance = float('inf')
-                
-                for other in lane_vehicles:
-                    if other == vehicle:
-                        continue
-                    
-                    if 'horizontal_bottom' in lane:
-                        if other.x > vehicle.x:
-                            distance = other.x - (vehicle.x + vehicle.width)
-                            if distance < min_distance:
-                                min_distance = distance
-                                vehicle_ahead = other
-                    elif 'horizontal_top' in lane:
-                        if other.x < vehicle.x:
-                            distance = vehicle.x - (other.x + other.width)
-                            if distance < min_distance:
-                                min_distance = distance
-                                vehicle_ahead = other
-                    elif 'vertical_left' in lane:
-                        if other.y > vehicle.y:
-                            distance = other.y - (vehicle.y + vehicle.height)
-                            if distance < min_distance:
-                                min_distance = distance
-                                vehicle_ahead = other
-                    elif 'vertical_right' in lane:
-                        if other.y < vehicle.y:
-                            distance = vehicle.y - (other.y + other.height)
-                            if distance < min_distance:
-                                min_distance = distance
-                                vehicle_ahead = other
-                
-                distance_to_vehicle = min_distance if vehicle_ahead else None
-                
-                is_in_intersection = self.is_vehicle_in_intersection(vehicle)
-                has_passed = self.has_vehicle_passed_intersection(vehicle)
+                vehicle_behind = None
+
+                if direction > 0:
+                    if i < len(lane_vehicles) - 1:
+                        vehicle_ahead = lane_vehicles[i + 1]
+                    if i > 0:
+                        vehicle_behind = lane_vehicles[i - 1]
+                else:
+                    if i > 0:
+                        vehicle_ahead = lane_vehicles[i - 1]
+                    if i < len(lane_vehicles) - 1:
+                        vehicle_behind = lane_vehicles[i + 1]
+
+                distance_to_vehicle = None
+                if vehicle_ahead:
+                    if is_horizontal:
+                        if direction > 0:
+                            distance_to_vehicle = vehicle_ahead.x - (vehicle.x + vehicle.width)
+                        else:
+                            distance_to_vehicle = vehicle.x - (vehicle_ahead.x + vehicle_ahead.width)
+                    else:
+                        if direction > 0:
+                            distance_to_vehicle = vehicle_ahead.y - (vehicle.y + vehicle.height)
+                        else:
+                            distance_to_vehicle = vehicle.y - (vehicle_ahead.y + vehicle_ahead.height)
+
                 distance_to_stop = self.get_distance_to_stop_line(vehicle)
                 
                 traffic_status = vehicle.get_traffic_light_status(
@@ -646,10 +621,9 @@ class SimulationVehicleManager:
                 vehicle.adjust_speed_for_traffic_and_lights(
                     distance_to_vehicle,
                     vehicle_ahead,
+                    vehicle_behind,
                     distance_to_stop,
-                    is_in_intersection,
-                    traffic_status,
-                    has_passed
+                    traffic_status
                 )
     
     def is_vehicle_completely_out_of_bounds(self, vehicle):
@@ -670,7 +644,7 @@ class SimulationVehicleManager:
         vehicle_type = random.choice(self.vehicle_types)
         direction = self.lane_directions[lane]
         
-        vehicle = SimulationVehicle(vehicle_type, lane, direction)
+        vehicle = SimulationVehicle(vehicle_type, lane, direction, self.intersection_bounds)
         
         if 'horizontal_bottom' in lane:
             x = self.sim_area_x - vehicle.width - 50
@@ -685,13 +659,14 @@ class SimulationVehicleManager:
             x = self.lane_positions['vertical_right'] - vehicle.width // 2
             y = self.sim_area_y + self.sim_area_height + 50
         
-        lane_vehicles = [v for v in self.vehicles if v.has_tag(lane)]
-        
-        if not self.check_spawn_collision(x, y, vehicle.width, vehicle.height, lane_vehicles, direction):
-            return None
-        
         vehicle.x = x
         vehicle.y = y
+
+        lane_vehicles = [v for v in self.vehicles if v.has_tag(lane)]
+        
+        if not self.check_spawn_collision(vehicle, lane_vehicles):
+            return None
+
         vehicle.original_x = x
         vehicle.original_y = y
         vehicle.activate()
@@ -702,22 +677,46 @@ class SimulationVehicleManager:
         
         return vehicle
     
-    def check_spawn_collision(self, spawn_x, spawn_y, vehicle_width, vehicle_height, lane_vehicles, direction):
-        min_gap = 250
-    
+    def check_spawn_collision(self, new_vehicle, lane_vehicles):
+        min_gap = new_vehicle.deceleration_distance * 1.2
+
+        closest_vehicle_ahead = None
+        min_distance = float('inf')
+
         for vehicle in lane_vehicles:
             if not vehicle.is_active():
                 continue
-            
-            if direction > 0:
-                distance_ahead = vehicle.x - (spawn_x + vehicle_width)
-                if distance_ahead < min_gap and distance_ahead > -vehicle_width:
-                    return False
+
+            distance = float('inf')
+            is_ahead = False
+
+            if 'horizontal' in new_vehicle.lane:
+                if new_vehicle.direction > 0:
+                    if vehicle.x > new_vehicle.x:
+                        is_ahead = True
+                        distance = vehicle.x - (new_vehicle.x + new_vehicle.width)
+                else:
+                    if vehicle.x < new_vehicle.x:
+                        is_ahead = True
+                        distance = new_vehicle.x - (vehicle.x + vehicle.width)
             else:
-                distance_ahead = spawn_x - (vehicle.x + vehicle.width)
-                if distance_ahead < min_gap and distance_ahead > -vehicle_width:
-                    return False
-    
+                if new_vehicle.direction > 0:
+                    if vehicle.y > new_vehicle.y:
+                        is_ahead = True
+                        distance = vehicle.y - (new_vehicle.y + new_vehicle.height)
+                else:
+                    if vehicle.y < new_vehicle.y:
+                        is_ahead = True
+                        distance = new_vehicle.y - (vehicle.y + vehicle.height)
+
+            if is_ahead and distance < min_distance:
+                min_distance = distance
+                closest_vehicle_ahead = vehicle
+
+        if closest_vehicle_ahead:
+            if min_distance < min_gap:
+                return False
+
         return True
     
     def clear_all(self):
