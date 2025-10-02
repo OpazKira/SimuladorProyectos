@@ -44,6 +44,10 @@ class SimulationVehicle(BackgroundElement):
         self.safe_distance = self.width * 2.0
         self.deceleration_distance = self.width * 5.0
         self.acceleration_distance = self.width * 7.0
+        
+        self.stop_line_distance = self.width * 8.0
+        self.stopping_at_light = False
+        self.waiting_at_light = False
     
     def get_vehicle_dimensions(self, vehicle_type, lane):
         base_dimensions = {
@@ -102,7 +106,14 @@ class SimulationVehicle(BackgroundElement):
     def custom_update(self, delta_time):
         if self.current_speed != self.target_speed:
             speed_diff = self.target_speed - self.current_speed
-            acceleration_rate = 3.0 if speed_diff > 0 else 4.0
+            
+            if self.waiting_at_light and speed_diff > 0:
+                acceleration_rate = 2.0
+            elif self.stopping_at_light and speed_diff < 0:
+                acceleration_rate = 5.0
+            else:
+                acceleration_rate = 3.0 if speed_diff > 0 else 4.0
+            
             adjustment = speed_diff * delta_time * acceleration_rate
             
             if abs(adjustment) > abs(speed_diff):
@@ -120,6 +131,114 @@ class SimulationVehicle(BackgroundElement):
                     self.set_velocity(0, self.current_speed)
                 else:
                     self.set_velocity(0, -self.current_speed)
+    
+    def get_traffic_light_status(self, traffic_state, is_transitioning, next_state):
+        if traffic_state == "off":
+            return "no_light"
+        
+        is_horizontal = 'horizontal' in self.lane
+        
+        if not is_transitioning:
+            if traffic_state == "left_go":
+                return "green" if is_horizontal else "red"
+            else:
+                return "red" if is_horizontal else "green"
+        else:
+            if next_state == "left_go":
+                return "yellow_to_green" if is_horizontal else "yellow_to_red"
+            else:
+                return "yellow_to_red" if is_horizontal else "yellow_to_green"
+    
+    def adjust_speed_for_traffic_and_lights(self, distance_to_vehicle, other_vehicle, 
+                                           distance_to_stop_line, is_in_intersection,
+                                           traffic_status, has_passed_intersection):
+        if has_passed_intersection:
+            if distance_to_vehicle is not None and other_vehicle is not None:
+                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+            else:
+                self.target_speed = self.base_speed
+                self.stopping_at_light = False
+                self.waiting_at_light = False
+            return
+        
+        if traffic_status == "no_light" or traffic_status == "green":
+            if distance_to_vehicle is not None and other_vehicle is not None:
+                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+            else:
+                self.target_speed = self.base_speed
+            self.stopping_at_light = False
+            self.waiting_at_light = False
+            return
+        
+        if traffic_status == "yellow_to_red":
+            if is_in_intersection:
+                if distance_to_vehicle is not None and other_vehicle is not None:
+                    self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                else:
+                    self.target_speed = self.base_speed
+                self.stopping_at_light = False
+                self.waiting_at_light = False
+            else:
+                if distance_to_stop_line is not None:
+                    if distance_to_vehicle is not None and other_vehicle is not None:
+                        if other_vehicle.stopping_at_light or other_vehicle.waiting_at_light:
+                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                            self.stopping_at_light = True
+                        else:
+                            vehicle_distance_priority = distance_to_vehicle < distance_to_stop_line
+                            if vehicle_distance_priority:
+                                self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                            else:
+                                if distance_to_stop_line < self.stop_line_distance:
+                                    self.target_speed = 0
+                                    self.stopping_at_light = True
+                                else:
+                                    self.target_speed = self.base_speed
+                    else:
+                        if distance_to_stop_line < self.stop_line_distance:
+                            self.target_speed = 0
+                            self.stopping_at_light = True
+                        else:
+                            self.target_speed = self.base_speed
+                else:
+                    if distance_to_vehicle is not None and other_vehicle is not None:
+                        self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                    else:
+                        self.target_speed = self.base_speed
+            return
+        
+        if traffic_status == "red" or traffic_status == "yellow_to_green":
+            if is_in_intersection:
+                if distance_to_vehicle is not None and other_vehicle is not None:
+                    self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                else:
+                    self.target_speed = self.base_speed
+                self.stopping_at_light = False
+                self.waiting_at_light = False
+            else:
+                if distance_to_vehicle is not None and other_vehicle is not None:
+                    if other_vehicle.waiting_at_light or other_vehicle.stopping_at_light:
+                        self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                        self.target_speed = 0
+                        self.waiting_at_light = True
+                    else:
+                        vehicle_ahead_stopped = other_vehicle.current_speed < 5
+                        if vehicle_ahead_stopped:
+                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                            self.target_speed = 0
+                            self.waiting_at_light = True
+                        else:
+                            self.adjust_speed_for_traffic(distance_to_vehicle, other_vehicle)
+                else:
+                    self.target_speed = 0
+                    self.waiting_at_light = True
+                    self.stopping_at_light = False
+                
+                if traffic_status == "yellow_to_green":
+                    if self.waiting_at_light and self.current_speed < 1:
+                        if distance_to_vehicle is None or distance_to_vehicle > self.safe_distance * 1.5:
+                            self.target_speed = self.base_speed * 0.3
+            return
     
     def adjust_speed_for_traffic(self, distance, other_vehicle):
         if distance is None or other_vehicle is None:
@@ -372,6 +491,75 @@ class SimulationVehicleManager:
             'vertical_left': 1,
             'vertical_right': -1
         }
+        
+        self.intersection_bounds = {
+            'left': center_x - road_width // 2,
+            'right': center_x + road_width // 2,
+            'top': center_y - road_width // 2,
+            'bottom': center_y + road_width // 2
+        }
+        
+        self.stop_line_positions = {
+            'horizontal_bottom': center_x - road_width // 2 - 5,
+            'horizontal_top': center_x + road_width // 2 + 5,
+            'vertical_left': center_y - road_width // 2 - 5,
+            'vertical_right': center_y + road_width // 2 + 5
+        }
+        
+        self.current_traffic_state = "off"
+        self.is_transitioning = False
+        self.next_traffic_state = "left_go"
+    
+    def set_traffic_light_state(self, traffic_state, is_transitioning, next_state):
+        self.current_traffic_state = traffic_state
+        self.is_transitioning = is_transitioning
+        self.next_traffic_state = next_state
+    
+    def is_vehicle_in_intersection(self, vehicle):
+        vehicle_center_x = vehicle.x + vehicle.width / 2
+        vehicle_center_y = vehicle.y + vehicle.height / 2
+        
+        return (self.intersection_bounds['left'] <= vehicle_center_x <= self.intersection_bounds['right'] and
+                self.intersection_bounds['top'] <= vehicle_center_y <= self.intersection_bounds['bottom'])
+    
+    def has_vehicle_passed_intersection(self, vehicle):
+        vehicle_center_x = vehicle.x + vehicle.width / 2
+        vehicle_center_y = vehicle.y + vehicle.height / 2
+        
+        if 'horizontal_bottom' in vehicle.lane:
+            return vehicle_center_x > self.intersection_bounds['right']
+        elif 'horizontal_top' in vehicle.lane:
+            return vehicle_center_x < self.intersection_bounds['left']
+        elif 'vertical_left' in vehicle.lane:
+            return vehicle_center_y > self.intersection_bounds['bottom']
+        elif 'vertical_right' in vehicle.lane:
+            return vehicle_center_y < self.intersection_bounds['top']
+        
+        return False
+    
+    def get_distance_to_stop_line(self, vehicle):
+        if 'horizontal_bottom' in vehicle.lane:
+            vehicle_front = vehicle.x + vehicle.width
+            stop_line = self.stop_line_positions['horizontal_bottom']
+            if vehicle_front < stop_line:
+                return stop_line - vehicle_front
+        elif 'horizontal_top' in vehicle.lane:
+            vehicle_front = vehicle.x
+            stop_line = self.stop_line_positions['horizontal_top']
+            if vehicle_front > stop_line:
+                return vehicle_front - stop_line
+        elif 'vertical_left' in vehicle.lane:
+            vehicle_front = vehicle.y + vehicle.height
+            stop_line = self.stop_line_positions['vertical_left']
+            if vehicle_front < stop_line:
+                return stop_line - vehicle_front
+        elif 'vertical_right' in vehicle.lane:
+            vehicle_front = vehicle.y
+            stop_line = self.stop_line_positions['vertical_right']
+            if vehicle_front > stop_line:
+                return vehicle_front - stop_line
+        
+        return None
     
     def update(self, delta_time):
         for lane in self.spawn_cooldowns:
@@ -443,10 +631,26 @@ class SimulationVehicleManager:
                                 min_distance = distance
                                 vehicle_ahead = other
                 
-                if vehicle_ahead:
-                    vehicle.adjust_speed_for_traffic(min_distance, vehicle_ahead)
-                else:
-                    vehicle.adjust_speed_for_traffic(None, None)
+                distance_to_vehicle = min_distance if vehicle_ahead else None
+                
+                is_in_intersection = self.is_vehicle_in_intersection(vehicle)
+                has_passed = self.has_vehicle_passed_intersection(vehicle)
+                distance_to_stop = self.get_distance_to_stop_line(vehicle)
+                
+                traffic_status = vehicle.get_traffic_light_status(
+                    self.current_traffic_state,
+                    self.is_transitioning,
+                    self.next_traffic_state
+                )
+                
+                vehicle.adjust_speed_for_traffic_and_lights(
+                    distance_to_vehicle,
+                    vehicle_ahead,
+                    distance_to_stop,
+                    is_in_intersection,
+                    traffic_status,
+                    has_passed
+                )
     
     def is_vehicle_completely_out_of_bounds(self, vehicle):
         margin = 10

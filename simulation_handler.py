@@ -42,6 +42,7 @@ class SimulationHandler:
         self.button_spacing = 15
         
         self.traffic_light_state = "left_go"
+        self.next_traffic_light_state = "right_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.transition_duration = 3.0
@@ -136,10 +137,18 @@ class SimulationHandler:
     
     def initialize_traffic_lights(self):
         self.traffic_light_state = "left_go"
+        self.next_traffic_light_state = "right_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.is_transitioning = False
         self.transition_timer = 0
+        
+        if self.vehicle_manager:
+            self.vehicle_manager.set_traffic_light_state(
+                self.traffic_light_state,
+                self.is_transitioning,
+                self.next_traffic_light_state
+            )
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state("left_go")
@@ -228,6 +237,7 @@ class SimulationHandler:
             self.simulator_screen.update_timer(-1)
         
         self.traffic_light_state = "left_go"
+        self.next_traffic_light_state = "right_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.is_transitioning = False
@@ -295,6 +305,18 @@ class SimulationHandler:
         self.is_transitioning = True
         self.transition_timer = 0
         
+        if self.traffic_light_state == 'left_go':
+            self.next_traffic_light_state = 'right_go'
+        else:
+            self.next_traffic_light_state = 'left_go'
+        
+        if self.vehicle_manager:
+            self.vehicle_manager.set_traffic_light_state(
+                self.traffic_light_state,
+                self.is_transitioning,
+                self.next_traffic_light_state
+            )
+        
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state("caution")
             self.simulator_screen.update_timer_text(".")
@@ -306,10 +328,12 @@ class SimulationHandler:
         
         current_state = self.traffic_light_state
         
+        self.traffic_light_state = self.next_traffic_light_state
+        
         if self.traffic_light_state == 'left_go':
-            self.traffic_light_state = 'right_go'
+            self.next_traffic_light_state = 'right_go'
         else:
-            self.traffic_light_state = 'left_go'
+            self.next_traffic_light_state = 'left_go'
         
         if self.traffic_counter:
             self.traffic_light_duration = self.traffic_counter.calculate_next_duration(
@@ -319,6 +343,13 @@ class SimulationHandler:
             print(f"DEBUG: Duracion calculada para {self.traffic_light_state}: {self.traffic_light_duration}s")
         
         self.traffic_light_timer = 0
+        
+        if self.vehicle_manager:
+            self.vehicle_manager.set_traffic_light_state(
+                self.traffic_light_state,
+                self.is_transitioning,
+                self.next_traffic_light_state
+            )
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state(self.traffic_light_state)
@@ -389,13 +420,6 @@ class SimulationHandler:
     
     def ensure_vehicle_layering(self, canvas):
         try:
-            # Orden correcto: el fondo del area va ENCIMA del background_layer pero DEBAJO de todo lo demas
-            # 1. background_layer (cielo, edificios del fondo general)
-            # 2. sim_background_layer (fondo gris del area - debe ser visible)
-            # 3. road_layer (carreteras del simulador)
-            # 4. vehicle_layer (vehiculos)
-            # 5. grid_layer, border_layer, ui_element
-            
             canvas.tag_lower('background_layer')
             canvas.tag_raise('sim_background_layer', 'background_layer')
             canvas.tag_raise('container_border', 'sim_background_layer')
