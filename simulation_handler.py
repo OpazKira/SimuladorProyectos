@@ -42,12 +42,13 @@ class SimulationHandler:
         self.button_spacing = 15
         
         self.traffic_light_state = "left_go"
-        self.next_traffic_light_state = "right_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.transition_duration = 3.0
         self.is_transitioning = False
         self.transition_timer = 0
+        
+        self.previous_green_state = "left_go"
         
         self.simulator_screen = None
         
@@ -137,18 +138,14 @@ class SimulationHandler:
     
     def initialize_traffic_lights(self):
         self.traffic_light_state = "left_go"
-        self.next_traffic_light_state = "right_go"
+        self.previous_green_state = "left_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.is_transitioning = False
         self.transition_timer = 0
         
         if self.vehicle_manager:
-            self.vehicle_manager.set_traffic_light_state(
-                self.traffic_light_state,
-                self.is_transitioning,
-                self.next_traffic_light_state
-            )
+            self.vehicle_manager.set_traffic_light_state(self.traffic_light_state)
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state("left_go")
@@ -237,7 +234,7 @@ class SimulationHandler:
             self.simulator_screen.update_timer(-1)
         
         self.traffic_light_state = "left_go"
-        self.next_traffic_light_state = "right_go"
+        self.previous_green_state = "left_go"
         self.traffic_light_timer = 0
         self.traffic_light_duration = 10.0
         self.is_transitioning = False
@@ -305,17 +302,11 @@ class SimulationHandler:
         self.is_transitioning = True
         self.transition_timer = 0
         
-        if self.traffic_light_state == 'left_go':
-            self.next_traffic_light_state = 'right_go'
-        else:
-            self.next_traffic_light_state = 'left_go'
+        self.previous_green_state = self.traffic_light_state
         
+        self.traffic_light_state = "caution"
         if self.vehicle_manager:
-            self.vehicle_manager.set_traffic_light_state(
-                self.traffic_light_state,
-                self.is_transitioning,
-                self.next_traffic_light_state
-            )
+            self.vehicle_manager.set_traffic_light_state(self.traffic_light_state)
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state("caution")
@@ -326,30 +317,24 @@ class SimulationHandler:
         self.is_transitioning = False
         self.transition_timer = 0
         
-        current_state = self.traffic_light_state
-        
-        self.traffic_light_state = self.next_traffic_light_state
-        
-        if self.traffic_light_state == 'left_go':
-            self.next_traffic_light_state = 'right_go'
+        if self.previous_green_state == 'left_go':
+            self.traffic_light_state = 'right_go'
         else:
-            self.next_traffic_light_state = 'left_go'
+            self.traffic_light_state = 'left_go'
+        
+        print(f"DEBUG: Cambio de {self.previous_green_state} -> {self.traffic_light_state}")
+        
+        if self.vehicle_manager:
+            self.vehicle_manager.set_traffic_light_state(self.traffic_light_state)
         
         if self.traffic_counter:
             self.traffic_light_duration = self.traffic_counter.calculate_next_duration(
-                current_state, 
+                self.previous_green_state, 
                 self.traffic_light_state
             )
             print(f"DEBUG: Duracion calculada para {self.traffic_light_state}: {self.traffic_light_duration}s")
         
         self.traffic_light_timer = 0
-        
-        if self.vehicle_manager:
-            self.vehicle_manager.set_traffic_light_state(
-                self.traffic_light_state,
-                self.is_transitioning,
-                self.next_traffic_light_state
-            )
         
         if self.simulator_screen:
             self.simulator_screen.set_traffic_light_state(self.traffic_light_state)
